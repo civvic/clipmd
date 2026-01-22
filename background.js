@@ -131,18 +131,10 @@ const writeHtmlAndBlobToTab = async (tabId, html, blob) => {
   });
 };
 
-const writeJsonAndBlobToTab = async (tabId, json, blob) => {
+const writeJsonWithImageToTab = async (tabId, data, blob) => {
   const b64 = await blobToBase64(blob);
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    args: [json, b64],
-    func: async (jsonContent, b64) => {
-      const res = await fetch(`data:image/png;base64,${b64}`);
-      const imgBlob = await res.blob();
-      const textBlob = new Blob([jsonContent], { type: "text/plain" });
-      await navigator.clipboard.write([new ClipboardItem({ "text/plain": textBlob, "image/png": imgBlob })]);
-    }
-  });
+  data.image = `data:image/png;base64,${b64}`;
+  await writeTextToTab(tabId, JSON.stringify(data, null, 2));
 };
 
 const extractCoords = async (debuggee, backendNodeId) => {
@@ -189,7 +181,7 @@ const handleNode = async (session, backendNodeId) => {
       const blob = await captureAndCrop(debuggee, backendNodeId);
       const coords = await getAllDescendants(debuggee, backendNodeId);
       const data = {html: outerHTML, coords};
-      await writeJsonAndBlobToTab(debuggee.tabId, JSON.stringify(data, null, 1), blob);
+      await writeJsonWithImageToTab(debuggee.tabId, data, blob);
     }
   } catch (err) {
     console.error(err);
