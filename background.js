@@ -48,7 +48,7 @@ const startSession = async (tabId, mode) => {
     await chrome.debugger.attach(debuggee, PROTOCOL_VERSION);
     await send(debuggee, "DOM.enable");
     await send(debuggee, "Overlay.enable");
-    if (mode === "screenshot" || mode === "html") await send(debuggee, "Page.enable");
+    if (mode === "screenshot" || mode === "html" || mode === "coords") await send(debuggee, "Page.enable");
     sessions.set(tabId, { debuggee, mode });
     await send(debuggee, "Overlay.setInspectMode", {
       mode: "searchForNode",
@@ -131,6 +131,44 @@ const writeHtmlAndBlobToTab = async (tabId, html, blob) => {
   });
 };
 
+const writeJsonAndBlobToTab = async (tabId, json, blob) => {
+  const b64 = await blobToBase64(blob);
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    args: [json, b64],
+    func: async (jsonContent, b64) => {
+      const res = await fetch(`data:image/png;base64,${b64}`);
+      const imgBlob = await res.blob();
+      const textBlob = new Blob([jsonContent], { type: "text/plain" });
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": textBlob, "image/png": imgBlob })]);
+    }
+  });
+};
+
+const extractCoords = async (debuggee, backendNodeId) => {
+  try {
+    const { node } = await send(debuggee, "DOM.describeNode", { backendNodeId });
+    const { model } = await send(debuggee, "DOM.getBoxModel", { backendNodeId });
+    if (!model) return null;
+    const pts = model.border;
+    const x = Math.min(pts[0], pts[2], pts[4], pts[6]), y = Math.min(pts[1], pts[3], pts[5], pts[7]);
+    const w = Math.max(pts[0], pts[2], pts[4], pts[6]) - x, h = Math.max(pts[1], pts[3], pts[5], pts[7]) - y;
+    return {tag: node.nodeName, x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h)};
+  } catch (e) { return null; }
+};
+
+const getAllDescendants = async (debuggee, backendNodeId) => {
+  const coords = [], queue = [backendNodeId];
+  while (queue.length > 0 && coords.length < 500) {
+    const id = queue.shift();
+    const coord = await extractCoords(debuggee, id);
+    if (coord) coords.push(coord);
+    const { node } = await send(debuggee, "DOM.describeNode", { backendNodeId: id, depth: 1 });
+    if (node.children) queue.push(...node.children.filter(c => c.backendNodeId).map(c => c.backendNodeId));
+  }
+  return coords;
+};
+
 const handleNode = async (session, backendNodeId) => {
   const { debuggee, mode } = session;
   try {
@@ -146,6 +184,12 @@ const handleNode = async (session, backendNodeId) => {
       const { outerHTML } = await send(debuggee, "DOM.getOuterHTML", { backendNodeId });
       const blob = await captureAndCrop(debuggee, backendNodeId);
       await writeHtmlAndBlobToTab(debuggee.tabId, outerHTML, blob);
+    } else if (mode === "coords") {
+      const { outerHTML } = await send(debuggee, "DOM.getOuterHTML", { backendNodeId });
+      const blob = await captureAndCrop(debuggee, backendNodeId);
+      const coords = await getAllDescendants(debuggee, backendNodeId);
+      const data = {html: outerHTML, coords};
+      await writeJsonAndBlobToTab(debuggee.tabId, JSON.stringify(data, null, 1), blob);
     }
   } catch (err) {
     console.error(err);
@@ -183,4 +227,5 @@ chrome.commands.onCommand.addListener((command, tab) => {
   if (command === "_execute_action") run("markdown", tab);
   if (command === "clipmd-screenshot") run("screenshot", tab);
   if (command === "clipmd-html") run("html", tab);
+  if (command === "clipmd-coords") run("coords", tab);
 });
