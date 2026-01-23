@@ -42,8 +42,8 @@
     },
     "clipmd-coords": {
       "suggested_key": {
-        "default": "Ctrl+Shift+R",
-        "mac": "MacCtrl+Shift+R"
+        "default": "Ctrl+Shift+C",
+        "mac": "MacCtrl+Shift+C"
       },
       "description": "Select element and capture with coordinates"
     }
