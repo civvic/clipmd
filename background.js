@@ -145,7 +145,18 @@ const extractCoords = async (debuggee, backendNodeId) => {
     const pts = model.border;
     const x = Math.min(pts[0], pts[2], pts[4], pts[6]), y = Math.min(pts[1], pts[3], pts[5], pts[7]);
     const w = Math.max(pts[0], pts[2], pts[4], pts[6]) - x, h = Math.max(pts[1], pts[3], pts[5], pts[7]) - y;
-    return {tag: node.nodeName, x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h)};
+    const attrs = node.attributes || [];
+    const get = name => { const i = attrs.indexOf(name); return i >= 0 ? attrs[i+1] : null; };
+    const o = {tag: node.nodeName, x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h)};
+    if (get('id')) o.id = get('id');
+    if (get('class')) o.class = get('class');
+    if (get('role')) o.role = get('role');
+    if (get('aria-label')) o.ariaLabel = get('aria-label');
+    if (get('href')) o.href = get('href');
+    if (get('src')) o.src = get('src');
+    if (get('alt')) o.alt = get('alt');
+    if (node.nodeValue) o.text = node.nodeValue.trim().slice(0, 100);
+    return o;
   } catch (e) { return null; }
 };
 
